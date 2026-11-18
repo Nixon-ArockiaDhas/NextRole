@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "Save to NextRole",
+  "version": "1.0.0",
+  "description": "Send the LinkedIn posting you are viewing to your local NextRole workspace.",
+  "permissions": ["activeTab"],
+  "action": { "default_popup": "popup.html" }
+}

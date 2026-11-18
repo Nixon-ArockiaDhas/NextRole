@@ -1,0 +1,7 @@
+node_modules/
+.next/
+*.tsbuildinfo
+.env*
+!.env.example
+*-credentials.env
+next-env.d.ts

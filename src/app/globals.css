@@ -328,3 +328,8 @@ input[type="file"] { max-width: 100%; }
 
 [data-slot="native-select-wrapper"] { width: 100%; }
 [data-slot="native-select-wrapper"] select { padding-inline-end: 32px; }
+
+.job-board > .panel.form-panel { margin-top: 18px; }
+.job-alert-form { display: grid; gap: 12px; margin-top: 12px; }
+.job-alert-form textarea { width: 100%; border: 1px solid #ddd; border-radius: 8px; padding: 8px; }
+.job-alert-form .button { justify-self: start; }

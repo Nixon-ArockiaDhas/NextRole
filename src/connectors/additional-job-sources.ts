@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { publicLinkedInEnabled, searchPublicLinkedInJobs } from "./linkedin-public-jobs";
 import { postingDetails } from "./greenhouse-jobs";
 
 const employers = [["Freshworks", "Freshworks"], ["BoschGroup", "Bosch"], ["Sutherland", "Sutherland"]] as const;
@@ -61,6 +62,17 @@ export async function searchAdditionalSources(role: string, location: string) {
     Promise.all(Object.entries(portals).map(async ([portal, name]) => {
       const prefix = `${portal.toUpperCase()}_JOBS_FEED`;
       const endpoint = process.env[`${prefix}_URL`]?.trim();
+      if (!endpoint && portal === "linkedin" && publicLinkedInEnabled()) {
+        try {
+          const jobs = (await searchPublicLinkedInJobs(role.slice(0, 150), location)).map(job => normalize(name, job));
+          return { portal, configured: true, status: `${jobs.length} public listings before filters`, jobs };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          const status = message.includes("no verifiable listings") ? "No listings returned or public access unavailable" :
+            /HTTP (429|403)/.test(message) ? "LinkedIn limited public access" : "Public LinkedIn search unavailable";
+          return { portal, configured: true, status, jobs: [] };
+        }
+      }
       if (!endpoint) return { portal, configured: false, status: "Search setup required", jobs: [] };
       try {
         const url = new URL(endpoint);

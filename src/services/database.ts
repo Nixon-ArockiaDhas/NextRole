@@ -11,6 +11,8 @@ async function initialize(uri: string) {
       db.collection("applications").createIndex({ userId: 1, sourceId: 1 }, { unique: true }),
       db.collection("applicationEvents").createIndex({ userId: 1, sourceId: 1, at: -1 }),
       db.collection("profileReviews").createIndex({ userId: 1, resumeId: 1, reviewedAt: -1 }),
+      db.collection("jobAlertListings").createIndex({ userId: 1, key: 1 }, { unique: true }),
+      db.collection("jobAlertListings").createIndex({ userId: 1, importedAt: -1 }),
       db.collection("users").createIndex({ email: 1 }, { unique: true }),
       db.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
       db.collection("sessions").createIndex({ userId: 1 }),

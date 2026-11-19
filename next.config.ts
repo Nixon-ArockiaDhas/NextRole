@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   poweredByHeader: false,
-  serverExternalPackages: ["pdf-parse"],
+  serverExternalPackages: ["pdf-parse", "linkedin-jobs-api", "mailparser"],
   async headers() {
     return [{
       source: "/:path*",

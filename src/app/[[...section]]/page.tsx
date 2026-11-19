@@ -126,7 +126,7 @@ export default async function Workspace({ params, searchParams }: {
     </>; break;
     case "/discover": content = <DiscoverJobs signedIn={Boolean(account)} jobs={savedJobs} feedback={feedback} searchConfigured={linkedInSearchConfigured()} selectedJob={typeof query.job === "string" && /^\d{1,20}$/.test(query.job) ? query.job : undefined} />; break;
     case "/applications": content = <ApplicationTracker applications={applications} feedback={feedback} />; break;
-    case "/recommended": content = <RecommendedJobs resume={candidateResume} query={query} userId={account!._id} />; break;
+    case "/recommended": content = <RecommendedJobs resume={candidateResume} query={query} userId={account!._id} feedback={feedback} />; break;
     case "/cover-letters":
     case "/notifications": content = <EmptySection path={path} />; break;
     default: notFound();

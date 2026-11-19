@@ -1,3 +1,5 @@
+import { searchLeverJobs } from "@/connectors/lever-jobs";
+import { publicLinkedInEnabled } from "@/connectors/linkedin-public-jobs";
 import { searchAdditionalSources } from "../connectors/additional-job-sources";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Input } from "@/components/ui/input";
@@ -12,18 +14,19 @@ import type { Profile } from "../services/resumes";
 import { linkedInSearchConfigured, searchLinkedInJobs } from "../connectors/linkedin-search";
 import { connectors } from "../connectors/registry";
 import { limit } from "../services/accounts";
-import { Heading } from "./workspace";
+import { Heading, Notice } from "./workspace";
 
 type Query = Record<string, string | string[] | undefined>;
 const currencies = ["INR", "USD", "EUR", "GBP", "CAD", "AUD"];
 
-export async function RecommendedJobs({ resume, query, userId }: { resume?: Profile; query: Query; userId: string }) {
+export async function RecommendedJobs({ resume, query, userId, feedback }: { resume?: Profile; query: Query; userId: string; feedback: { success?: string; error?: string } }) {
   const resumeRole = resume?.title || "";
   const searchText = typeof query.role === "string" ? query.role.trim().slice(0, 150) : "";
   const role = searchText || resumeRole;
   const skills = resume?.technicalSkills || "";
   if (!resumeRole && !skills) return <>
     <Heading title="Recommended Jobs" detail="Find jobs matched to your resume." />
+    <Notice {...feedback} />
     <section className="panel form-panel">
       <p>Upload a readable resume with a job title or skills to get recommendations.</p>
       <Link className="button" href="/resumes">Open Resume Studio</Link>
@@ -38,9 +41,9 @@ export async function RecommendedJobs({ resume, query, userId }: { resume?: Prof
   const workplace = query.workplace === "remote" || query.workplace === "hybrid" || query.workplace === "onsite" ? query.workplace : "";
   const opportunity = query.opportunity === "remote-or-visa" ? query.opportunity : "";
   const requireExperience = query.experienceListed === "yes";
-  const linkedInReady = !process.env.LINKEDIN_JOBS_FEED_URL?.trim() && linkedInSearchConfigured();
+  const linkedInReady = !process.env.LINKEDIN_JOBS_FEED_URL?.trim() && !publicLinkedInEnabled() && linkedInSearchConfigured();
   const linkedInKeywords = (role || skills.split(/[,;|\n]/)[0]).trim().slice(0, 100);
-  const [results, additional, linkedIn] = await Promise.all([
+  const [results, additional, linkedIn, lever] = await Promise.all([
     searchEmployerJobs(role, skills),
     searchAdditionalSources(role || skills.split(/[,;|\n]/)[0], location),
     (async () => {
@@ -60,9 +63,14 @@ export async function RecommendedJobs({ resume, query, userId }: { resume?: Prof
         return { status: "Search temporarily unavailable", jobs: [] };
       }
     })(),
+    searchLeverJobs(role, skills),
   ]);
-  const candidates = [...results.jobs.map(job => ({ ...job, portal: "Greenhouse" })), ...additional.jobs, ...linkedIn.jobs].sort((a, b) => b.score - a.score);
-  const boards = [...results.boards, ...additional.boards];
+  const unique = new Map<string, (typeof lever.jobs)[number] | (typeof additional.jobs)[number] | (typeof linkedIn.jobs)[number]>();
+  for (const job of [...lever.jobs, ...results.jobs.map(job => ({ ...job, portal: "Greenhouse" })), ...additional.jobs, ...linkedIn.jobs]) {
+    unique.set(job.url, job);
+  }
+  const candidates = [...unique.values()].sort((a, b) => b.score - a.score);
+  const boards = [...results.boards, ...additional.boards, ...lever.boards];
   const availableBoards = boards.filter(board => board.matches !== null).length;
   const matches = candidates.filter(job => {
     const place = job.location.toLowerCase();
@@ -94,6 +102,7 @@ export async function RecommendedJobs({ resume, query, userId }: { resume?: Prof
         <Button form="recommendation-filters" className="button" type="submit">Find matches</Button>
       </div>
     </header>
+    <Notice {...feedback} />
     <div className="job-board-layout">
       <section aria-labelledby="job-results-title" className="job-board-results">
         <div className="job-board-results-header">
@@ -113,7 +122,10 @@ export async function RecommendedJobs({ resume, query, userId }: { resume?: Prof
           </div>
           {job.excerpt && <p className="job-board-excerpt">{job.excerpt}</p>}
           {job.matchingSkills.length > 0 && <ul className="job-board-skills" aria-label="Matching resume skills">{job.matchingSkills.slice(0, 5).map(skill => <li key={skill}>{skill}</li>)}</ul>}
-          {job.description ? <JobMatch action={analyzeJobMatch.bind(null, { title: job.title, description: job.description })} /> :
+          {job.description || job.portal === "Lever" || (job.portal === "LinkedIn" && publicLinkedInEnabled()) ?
+            <JobMatch action={analyzeJobMatch.bind(null, { title: job.title, description: job.description,
+              leverUrl: job.portal === "Lever" ? job.url : undefined,
+              linkedInId: job.portal === "LinkedIn" ? new URL(job.url).pathname.match(/\/jobs\/view\/(\d+)\/?$/)?.[1] : undefined })} /> :
             <p className="job-board-excerpt">Match analysis requires a job description.</p>}
           <div className="job-board-card-footer">
             <div><p><BriefcaseBusiness size={16} />{job.minimumYears === null ? "Experience unspecified" : `${job.minimumYears}+ years`} · {job.visa === "unknown" ? "Visa unspecified" : `Visa ${job.visa}`}</p>

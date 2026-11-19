@@ -1,3 +1,4 @@
+import { importJobAlert, MAX_ALERT_BYTES } from "../../../../services/job-alerts";
 import { reviewProfile } from "../../../../services/profile-review";
 import { saveLinkedInJob, removeLinkedInJob } from "../../../../services/saved-jobs";
 import { NextRequest, NextResponse } from "next/server";
@@ -37,11 +38,11 @@ export async function POST(request: NextRequest, context: Context) {
   const allowedOrigin = process.env.APP_URL ? new URL(process.env.APP_URL).origin : request.nextUrl.origin;
   if (extra || !action) return new Response(null, { status: 404 });
   if (request.headers.get("origin") !== allowedOrigin) return new Response("Request origin is not allowed.", { status: 403 });
-  const paths: Record<string, string> = { login: "/login", register: "/register", forgot: "/forgot", reset: "/reset", logout: "/settings", profile: "/profile", upload: "/resumes", "fill-profile": "/resumes", "review-profile": "/resumes", "delete-resume": "/resumes", automation: "/automation", "save-job": "/discover", "remove-job": "/discover", "track-job": "/applications", "application-status": "/applications" };
+  const paths: Record<string, string> = { login: "/login", register: "/register", forgot: "/forgot", reset: "/reset", logout: "/settings", profile: "/profile", upload: "/resumes", "fill-profile": "/resumes", "review-profile": "/resumes", "delete-resume": "/resumes", automation: "/automation", "save-job": "/discover", "remove-job": "/discover", "import-job-alert": "/recommended", "track-job": "/applications", "application-status": "/applications" };
   if (!Object.hasOwn(paths, action)) return new Response(null, { status: 404 });
   let path = paths[action];
   const size = Number(request.headers.get("content-length"));
-  if (!Number.isFinite(size) || size <= 0 || size > (action === "upload" ? 5_350_000 : 80_000)) {
+  if (!Number.isFinite(size) || size <= 0 || size > (action === "upload" ? 5_350_000 : action === "import-job-alert" ? MAX_ALERT_BYTES + 4096 : 80_000)) {
     return feedback(path, "The request exceeds the allowed size.", "error");
   }
 
@@ -96,6 +97,18 @@ export async function POST(request: NextRequest, context: Context) {
         unreadable: "Original saved. The document parser could not read its contents.",
       }[status];
       return feedback(path, message, "success");
+    }
+    if (action === "import-job-alert") {
+      const file = form.get("emailFile");
+      const text = form.get("emailText");
+      const hasFile = file instanceof File && file.size > 0;
+      const pasted = typeof text === "string" ? text.trim() : "";
+      if ((!hasFile && !pasted) || (hasFile && pasted)) return feedback(path, "Upload one .eml file or paste one alert.", "error");
+      if (hasFile && (!/\.eml$/i.test(file.name) || file.size > MAX_ALERT_BYTES)) return feedback(path, "Choose an .eml file up to 1 MB.", "error");
+      if (Buffer.byteLength(pasted) > MAX_ALERT_BYTES) return feedback(path, "The pasted alert exceeds 1 MB.", "error");
+      const result = await importJobAlert(userId, hasFile ? Buffer.from(await file.arrayBuffer()) : pasted);
+      if (!result.found) return feedback(path, "No supported direct job links were found. Try pasting the job links from the alert.", "error");
+      return feedback(path, `Imported ${result.added} new job(s). ${result.found - result.added} already saved.`, "success");
     }
     if (action === "save-job") {
       const result = await saveLinkedInJob(userId, form);

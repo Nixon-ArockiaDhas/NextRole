@@ -1,6 +1,8 @@
 "use server";
 
+import { leverJobDescription } from "@/connectors/lever-jobs";
 import { z } from "zod";
+import { publicLinkedInJobDescription } from "@/connectors/linkedin-public-jobs";
 import { currentAccount, limit } from "@/services/accounts";
 import { database } from "@/services/database";
 import { aiConfiguration } from "@/services/ai/config";
@@ -14,12 +16,10 @@ const analysisSchema = z.object({
 
 export type MatchState = { analysis?: z.infer<typeof analysisSchema>; error?: string };
 
-export async function analyzeJobMatch(job: { title: string; description: string }, _previous: MatchState): Promise<MatchState> {
+export async function analyzeJobMatch(job: { title: string; description: string; linkedInId?: string; leverUrl?: string }, _previous: MatchState): Promise<MatchState> {
   try {
     const account = await currentAccount();
     if (!account) return { error: "Sign in to analyze a job." };
-    const description = job.description.trim().slice(0, 18000);
-    if (!description) return { error: "The source did not provide a job description." };
     const ai = aiConfiguration();
     if (ai.provider !== "nvidia" || !ai.key) return { error: "NVIDIA analysis is unavailable." };
     const { db } = await database();
@@ -27,6 +27,14 @@ export async function analyzeJobMatch(job: { title: string; description: string 
       .find({ userId: account._id }).sort({ uploadedAt: -1 }).project<{ text: string }>({ text: 1 }).limit(1).next();
     if (!resume?.text?.trim()) return { error: "Upload a readable resume first." };
     if (!(await limit(`job-match:${account._id}`, 12))) return { error: "Analysis limit reached. Try again later." };
+    let description = job.description.trim().slice(0, 18000);
+    if (!description && job.linkedInId) {
+      description = (await publicLinkedInJobDescription(job.linkedInId).catch(() => "")).slice(0, 18000);
+    }
+    if (!description && job.leverUrl) {
+      description = (await leverJobDescription(job.leverUrl).catch(() => "")).slice(0, 18000);
+    }
+    if (!description) return { error: "The source did not provide a readable job description." };
     const response = await fetch(`${ai.baseUrl}/chat/completions`, {
       method: "POST", redirect: "error", cache: "no-store", signal: AbortSignal.timeout(30000),
       headers: { Authorization: `Bearer ${ai.key}`, "Content-Type": "application/json" },
